@@ -1,74 +1,100 @@
-// package middleware
+package middleware
 
-// import (
-// 	"net/http"
-// 	"os"
-// 	"strings"
-// 	"time"
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"log"
+	"myproject/pkg/database"
+	"net/http"
+	"strings"
+	"time"
+)
 
-// 	"github.com/gin-gonic/gin"
-// 	"github.com/golang-jwt/jwt/v4"
-// 	"gorm.io/gorm"
-// )
+func JWTMiddleware(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		tokenString := r.Header.Get("Authorization")
+		if tokenString == "" {
+			http.Error(w, "未提供授权令牌", http.StatusUnauthorized)
+			return
+		}
 
-// func JWTMiddleware(db *gorm.DB) gin.HandlerFunc {
-// 	return func(c *gin.Context) {
-// 		tokenString := c.GetHeader("Authorization")
-// 		if tokenString == "" {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "未提供授权令牌"})
-// 			c.Abort()
-// 			return
-// 		}
+		// 移除可能的 "Bearer " 前缀
+		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-// 		// 移除可能的 "Bearer " 前缀
-// 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+		// 打印接收到的令牌
+		// log.Printf("接收到的令牌: %s", tokenString)
 
-// 		// 使用环境变量或配置文件中的密钥
-// 		secretKey := []byte(os.Getenv("JWT_SECRET_KEY"))
+		var user struct {
+			ID        uint
+			Token     string
+			ExpiresAt string // 使用 string 类型来接收日期时间字符串
+		}
 
-// 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-// 			return secretKey, nil
-// 		})
+		// 执行数据库查询
+		err := database.DB.QueryRow("SELECT id, token, expires_at FROM users WHERE token = ?", tokenString).Scan(&user.ID, &user.Token, &user.ExpiresAt)
 
-// 		if err != nil {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的令牌", "details": err.Error()})
-// 			c.Abort()
-// 			return
-// 		}
+		if err != nil {
+			if err == sql.ErrNoRows {
+				log.Printf("%s 数据库中未找到匹配的令牌", time.Now().Format(time.RFC3339))
+				http.Error(w, "无效的令牌", http.StatusUnauthorized)
+			} else {
+				log.Printf("数据库查询错误: %v", err)
+				http.Error(w, "数据库查询错误: "+err.Error(), http.StatusInternalServerError)
+			}
+			return
+		}
 
-// 		claims, ok := token.Claims.(jwt.MapClaims)
-// 		if !ok {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "无效的令牌声明"})
-// 			c.Abort()
-// 			return
-// 		}
+		// 解析 expires_at
+		expiresAt, err := time.Parse("2006-01-02 15:04:05", user.ExpiresAt)
+		if err != nil {
+			log.Printf("解析 expires_at 错误: %v", err)
+			http.Error(w, "服务器内部错误", http.StatusInternalServerError)
+			return
+		}
 
-// 		userID := uint(claims["user_id"].(float64))
+		// 修改日志输出格式
+		log.SetFlags(0)
+		log.SetOutput(LogWriter{})
 
-// 		var user struct {
-// 			Token     string
-// 			ExpiresAt time.Time
-// 		}
-// 		if err := db.Table("users").Select("token", "expires_at").Where("id = ?", userID).First(&user).Error; err != nil {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "用户不存在", "details": err.Error()})
-// 			c.Abort()
-// 			return
-// 		}
+		// 打印查询结果
+		// logMsg := fmt.Sprintf("查询结果 - ID: %d, Token: %s, ExpiresAt: %s", user.ID, user.Token, expiresAt.Format(time.RFC3339))
+		// log.Println(logMsg)
 
-// 		if user.Token != tokenString {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "令牌不匹配"})
-// 			c.Abort()
-// 			return
-// 		}
+		// 验证令牌是否匹配
+		if user.Token != tokenString {
+			log.Printf("令牌不匹配 - 数据库: %s, 请求: %s", user.Token, tokenString)
+			http.Error(w, "令牌不匹配", http.StatusUnauthorized)
+			return
+		}
 
-// 		if time.Now().After(user.ExpiresAt) {
-// 			c.JSON(http.StatusUnauthorized, gin.H{"error": "令牌已过期"})
-// 			c.Abort()
-// 			return
-// 		}
+		// 检查令牌是否过期
+		if time.Now().After(expiresAt) {
+			log.Printf("令牌已过期 - 过期时间: %v, 当前时间: %v", expiresAt, time.Now())
+			http.Error(w, "令牌已过期", http.StatusUnauthorized)
+			return
+		}
 
-// 		// 修改这里：将 user_id 存储为 float64 类型
-// 		c.Set("user_id", float64(userID))
-// 		c.Next()
-// 	}
-// }
+		log.Printf("验证成功 - 用户ID: %d", user.ID)
+
+		// �� user_id 存储在请求上下文中
+		ctx := r.Context()
+		ctx = context.WithValue(ctx, "user_id", int(user.ID))
+		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+// 辅助函数：用于发送JSON响应
+func sendJSONResponse(w http.ResponseWriter, status int, data interface{}) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(data)
+}
+
+// 添加自定义的 LogWriter
+type LogWriter struct{}
+
+func (writer LogWriter) Write(bytes []byte) (int, error) {
+	return fmt.Print(time.Now().Format(time.RFC3339) + " " + string(bytes))
+}
