@@ -8,7 +8,7 @@ import (
 // BalanceHandler 处理用户余额修改请求
 func BalanceHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST method is allowed", http.StatusMethodNotAllowed)
+		http.Error(w, "只允许POST方法", http.StatusMethodNotAllowed)
 		return
 	}
 
