@@ -10,7 +10,7 @@ import (
 func main() {
 	http.HandleFunc("/login", handlers.LoginHandler)
 	http.HandleFunc("/balance", middleware.JWTMiddleware(handlers.BalanceHandler))
-	http.HandleFunc("/price", handlers.PriceHandler)
+	http.HandleFunc("/price", middleware.JWTMiddleware(handlers.PriceHandler))
 
 	log.Println("Server starting on port 8080")
 	if err := http.ListenAndServe(":8080", nil); err != nil {
