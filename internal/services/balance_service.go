@@ -28,9 +28,8 @@ func HandleBalanceUpdate(w http.ResponseWriter, r *http.Request) error {
 	logger.LogMessage(logger.DEBUG, "成功獲取用戶ID：%v", userID)
 
 	balanceStr := r.FormValue("balance")
-	amountStr := r.FormValue("amount")
 
-	logger.LogMessage(logger.INFO, "嘗試更新用戶 %d 的餘額", int(userID))
+	// logger.LogMessage(logger.INFO, "嘗試更新用戶 %d 的餘額", int(userID))
 
 	var newBalance float64
 
@@ -59,29 +58,17 @@ func HandleBalanceUpdate(w http.ResponseWriter, r *http.Request) error {
 	// 添加新的日誌記錄，顯示更新前的餘額
 	logger.LogMessage(logger.INFO, "用戶 %d 的當前餘額為 %.2f", int(userID), currentBalance)
 
-	if balanceStr != "" {
-		var parseErr error
-		newBalance, parseErr = strconv.ParseFloat(balanceStr, 64)
-		if parseErr != nil {
-			logger.LogMessage(logger.ERROR, "無效的餘額格式: %s，錯誤：%v", balanceStr, parseErr)
-			return errors.New("無效的餘額格式")
-		}
-	} else if amountStr != "" {
-		amount, parseErr := strconv.ParseFloat(amountStr, 64)
-		if parseErr != nil {
-			logger.LogMessage(logger.ERROR, "無效的金額格式: %s，錯誤：%v", amountStr, parseErr)
-			return errors.New("無效的金額格式")
-		}
-		logger.LogMessage(logger.DEBUG, "解析金額成功：%v", amount)
-		newBalance = currentBalance + amount
-	} else {
-		logger.LogMessage(logger.ERROR, "未提供餘額或金額，FormValue：%v", r.Form)
-		return errors.New("未提供餘額或金額")
+	// 簡化餘額更新邏輯
+	var parseErr error
+	newBalance, parseErr = strconv.ParseFloat(balanceStr, 64)
+	if parseErr != nil {
+		logger.LogMessage(logger.ERROR, "無效的餘額格式: %s，錯誤：%v", balanceStr, parseErr)
+		return errors.New("無效的餘額格式")
 	}
 
 	// 更新users_balances表中的balance欄位
 	updateSQL := "UPDATE users_balances SET balance = ? WHERE user_id = ?"
-	logger.LogMessage(logger.DEBUG, "執行SQL: %s, %d, %s", updateSQL, userID, balanceStr)
+	logger.LogMessage(logger.DEBUG, "執行SQL: %s, %.2f, %d", updateSQL, newBalance, userID)
 	result, execErr := tx.Exec(updateSQL, newBalance, int(userID))
 	if execErr != nil {
 		logger.LogMessage(logger.ERROR, "更新餘額時發生錯誤: %v", execErr)
