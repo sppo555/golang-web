@@ -10,7 +10,7 @@ import (
 	"myproject/pkg/database"
 	"myproject/pkg/logger"
 
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -51,10 +51,12 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) error {
 	// 生成JWT
 	logger.LogMessage(logger.DEBUG, "開始生成JWT令牌")
 	expirationTime := time.Now().Add(time.Hour * 24)
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+	claims := jwt.MapClaims{
 		"user_id": userID,
-		"exp":     expirationTime.Unix(),
-	})
+		"exp":     jwt.NewNumericDate(expirationTime),
+		"iat":     jwt.NewNumericDate(time.Now()),
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	jwtSecret := os.Getenv("JWT_SECRET")
 	if jwtSecret == "" {
@@ -70,19 +72,20 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) error {
 	}
 	logger.LogMessage(logger.DEBUG, "成功生成JWT令牌 - 用戶ID: %d", userID)
 
-	// 將token和過期時間存入數據庫
-	logger.LogMessage(logger.DEBUG, "開始將令牌存儲到數據庫")
-	_, err = database.DB.Exec("UPDATE users SET token = ?, expires_at = ? WHERE id = ?", tokenString, expirationTime, userID)
-	if err != nil {
-		logger.LogMessage(logger.ERROR, "存儲token錯誤: %v", err)
-		logger.LogMessage(logger.DEBUG, "數據庫更新失敗 - 用戶ID: %d, 錯誤: %v", userID, err)
-		return errors.New("存儲令牌失敗")
-	}
-	logger.LogMessage(logger.DEBUG, "成功將令牌存儲到數據庫 - 用戶ID: %d", userID)
-
 	logger.LogMessage(logger.INFO, "用戶登錄成功: %s (ID: %d)", username, userID)
 	logger.LogMessage(logger.DEBUG, "登錄過程完成 - 用戶ID: %d, 令牌長度: %d", userID, len(tokenString))
 
-	w.Write([]byte("登錄成功，令牌: " + tokenString))
+	// 設置JWT作為HTTP-only cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "token",
+		Value:    tokenString,
+		Expires:  expirationTime,
+		HttpOnly: true,
+		Secure:   true, // 在生產環境中使用HTTPS時設置為true
+		SameSite: http.SameSiteStrictMode,
+		Path:     "/",
+	})
+
+	w.Write([]byte("登錄成功"))
 	return nil
 }

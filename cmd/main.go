@@ -17,3 +17,5 @@ func main() {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
+
+// export TEST_DB_USERNAME=alex TEST_DB_PASSWORD=1qaz2wsx  LOG_LEVEL=INFO JWT_SECRET="pSrgDNZCfKopQOIi5E5y+viGaaQOWr1wyCac84LC4Sw="
