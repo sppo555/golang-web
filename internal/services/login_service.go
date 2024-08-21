@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"os"
 	"time"
 
 	"myproject/pkg/database"
@@ -55,7 +56,13 @@ func HandleLogin(w http.ResponseWriter, r *http.Request) error {
 		"exp":     expirationTime.Unix(),
 	})
 
-	tokenString, err := token.SignedString([]byte("your-secret-key")) // 請替換為安全的密鑰
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		logger.LogMessage(logger.ERROR, "未設置JWT_SECRET環境變量")
+		return errors.New("服務器配置錯誤")
+	}
+
+	tokenString, err := token.SignedString([]byte(jwtSecret))
 	if err != nil {
 		logger.LogMessage(logger.ERROR, "生成JWT錯誤: %v", err)
 		logger.LogMessage(logger.DEBUG, "JWT生成失敗 - 用戶ID: %d, 錯誤: %v", userID, err)
