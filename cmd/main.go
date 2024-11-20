@@ -8,6 +8,7 @@ import (
 )
 
 func main() {
+	http.HandleFunc("/health", handlers.HealthHandler)
 	http.HandleFunc("/login", handlers.LoginHandler)
 	http.HandleFunc("/balance", middleware.JWTMiddleware(handlers.BalanceHandler))
 	http.HandleFunc("/price", middleware.JWTMiddleware(handlers.PriceHandler))
